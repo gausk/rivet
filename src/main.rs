@@ -1,11 +1,21 @@
+mod command;
 mod prompt;
 
+use crate::command::Command;
 use crate::prompt::shell_prompt;
 use anyhow::Result;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader, BufWriter, stdin, stdout};
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() {
+    loop {
+        if let Err(e) = run_shell().await {
+            eprintln!("{}", e);
+        }
+    }
+}
+
+async fn run_shell() -> Result<()> {
     let stdin = stdin();
     let stdout = stdout();
 
@@ -22,8 +32,14 @@ async fn main() -> Result<()> {
         .await?;
     writer.flush().await?;
     while let Ok(Some(line)) = reader.next_line().await {
-        writer.write_all(line.as_bytes()).await?;
-        writer.write_all(b"\n").await?;
+        match Command::try_from(line.as_str()) {
+            Ok(command) => {
+                let _ = command.execute().await.inspect_err(|e| eprintln!("{}", e));
+            }
+            Err(e) => {
+                eprintln!("{}", e);
+            }
+        }
         writer
             .write_all(shell_prompt(&current_dir).as_bytes())
             .await?;

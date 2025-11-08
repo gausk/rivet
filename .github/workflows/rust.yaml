@@ -36,7 +36,7 @@ jobs:
           echo "Running all examples..."
           for example in $(cargo metadata --no-deps --format-version 1 | jq -r '.packages[].targets[] | select(.kind[] == "example") | .name'); do
             echo "Running example: $example"
-            cargo run --example "$example" --release
+            timeout 100s cargo run --example "$example" --release
           done
       - name: Generate documentation
         run: cargo doc --workspace --no-deps --release

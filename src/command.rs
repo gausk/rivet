@@ -1,70 +1,77 @@
 #![allow(unused)]
-use anyhow::bail;
+
+use std::path::PathBuf;
+use anyhow::{anyhow, bail};
 
 #[derive(Debug, Clone)]
-pub enum Command {
+pub enum Command<'a> {
     Exit,
-    Echo(String),
-    Ls(Vec<String>),
+    Echo(Option<&'a str>),
+    Ls(Option<&'a str>),
     Pwd,
-    Cd(String),
-    Touch(Vec<String>),
-    Rm(Vec<String>),
-    Cat(Vec<String>),
 }
 
-impl TryFrom<&str> for Command {
+impl<'a> TryFrom<&'a str> for Command<'a> {
     type Error = anyhow::Error;
-    fn try_from(value: &str) -> Result<Self, Self::Error> {
-        let values: Vec<&str> = value.split(' ').collect();
-        Ok(match values[0] {
+    fn try_from(value: &'a str) -> Result<Self, Self::Error> {
+        let (cmd, args) = value
+            .split_once(' ')
+            .map(|(x, y)| (x, Some(y)))
+            .unwrap_or((value, None));
+        Ok(match cmd {
             "exit" => Command::Exit,
-            "echo" => Command::Echo(values[1..].join(" ")),
-            "ls" => Command::Ls(values[1..].iter().map(|x| x.to_string()).collect()),
+            "echo" => Command::Echo(args),
+            "ls" => Command::Ls(args),
             "pwd" => {
-                if values.len() > 1 {
+                if args.is_some() {
                     bail!("pwd: too many arguments")
                 } else {
                     Command::Pwd
                 }
             }
-            "cd" => {
-                if values.len() != 2 {
-                    bail!("cd: too many arguments")
-                } else {
-                    Command::Cd(values[1].to_string())
-                }
-            }
-            "touch" => Command::Touch(values[1..].iter().map(|x| x.to_string()).collect()),
-            "rm" => Command::Rm(values[1..].iter().map(|x| x.to_string()).collect()),
-            "cat" => Command::Cat(values[1..].iter().map(|x| x.to_string()).collect()),
             other => bail!("Unknown command: {}", other),
         })
     }
 }
 
-impl Command {
-    pub async fn execute(&self) -> Result<(), anyhow::Error> {
+impl Command<'_> {
+    pub async fn execute(&self, curr_dir: &mut PathBuf) -> Result<(), anyhow::Error> {
         match self {
             Command::Exit => std::process::exit(0),
-            Command::Echo(args) => println!("{args}"),
+            Command::Echo(args) => println!("{}", args.unwrap_or_default()),
             Command::Ls(args) => {
-                if args.is_empty() {
+                if let Some(args) = args {
+                    for arg in args.split_whitespace() {
+                        let metadata = match tokio::fs::metadata(arg).await {
+                            Ok(metadata) => metadata,
+                            Err(e) => {
+                                eprintln!("ls: {arg}: {e}");
+                                continue
+                            }
+                        };
+
+                        if metadata.is_dir() {
+                            let mut entries = tokio::fs::read_dir(arg).await?;
+                            while let Some(entry) = entries.next_entry().await? {
+                                print!("{}    ", entry.file_name().to_string_lossy());
+                            }
+                            println!();
+                        } else {
+                            println!("{}", arg);
+                        }
+                    }
+                } else {
                     let entries = std::fs::read_dir(".")?;
                     for entry in entries {
                         let entry = entry?;
-                        println!("{entry:?}");
+                        print!("{}    ", entry.file_name().to_string_lossy());
                     }
-                } else {
-                    for arg in args {
-                        let mut entries = tokio::fs::read_dir(arg).await?;
-                        while let Some(entry) = entries.next_entry().await? {
-                            println!("{entry:?}");
-                        }
-                    }
+                    println!();
                 }
             }
-            _ => (),
+            Command::Pwd => {
+                println!("{}", curr_dir.as_path().display());
+            }
         }
         Ok(())
     }

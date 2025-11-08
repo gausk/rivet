@@ -22,7 +22,7 @@ async fn run_shell() -> Result<()> {
     let mut reader = BufReader::new(stdin).lines();
     let mut writer = BufWriter::new(stdout);
 
-    let current_dir = std::env::current_dir()?;
+    let mut current_dir = std::env::current_dir()?;
 
     writer
         .write_all(b"Welcome to Rivet: Secure Shell in rust!\n")
@@ -32,9 +32,9 @@ async fn run_shell() -> Result<()> {
         .await?;
     writer.flush().await?;
     while let Ok(Some(line)) = reader.next_line().await {
-        match Command::try_from(line.as_str()) {
+        match Command::try_from(line.trim()) {
             Ok(command) => {
-                let _ = command.execute().await.inspect_err(|e| eprintln!("{}", e));
+                let _ = command.execute(&mut current_dir).await.inspect_err(|e| eprintln!("{}", e));
             }
             Err(e) => {
                 eprintln!("{}", e);

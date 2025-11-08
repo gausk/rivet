@@ -1,7 +1,5 @@
-#![allow(unused)]
-
-use std::path::PathBuf;
-use anyhow::{anyhow, bail};
+use anyhow::bail;
+use std::path::Path;
 
 #[derive(Debug, Clone)]
 pub enum Command<'a> {
@@ -35,7 +33,7 @@ impl<'a> TryFrom<&'a str> for Command<'a> {
 }
 
 impl Command<'_> {
-    pub async fn execute(&self, curr_dir: &mut PathBuf) -> Result<(), anyhow::Error> {
+    pub async fn execute(&self, curr_dir: &Path) -> Result<(), anyhow::Error> {
         match self {
             Command::Exit => std::process::exit(0),
             Command::Echo(args) => println!("{}", args.unwrap_or_default()),
@@ -46,7 +44,7 @@ impl Command<'_> {
                             Ok(metadata) => metadata,
                             Err(e) => {
                                 eprintln!("ls: {arg}: {e}");
-                                continue
+                                continue;
                             }
                         };
 
@@ -70,7 +68,7 @@ impl Command<'_> {
                 }
             }
             Command::Pwd => {
-                println!("{}", curr_dir.as_path().display());
+                println!("{}", curr_dir.display());
             }
         }
         Ok(())
